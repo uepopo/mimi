@@ -99,38 +99,39 @@ detect_env
 
 print_banner() {
     echo ""
-    echo -e "${PINK}          ██████            ██████\n\
-    echo    "              █████████████     ███████████"
-    echo    "             ████     ████   █████     ████"
-    echo    "             ████       ███   ███       ████"
-    echo    "              █████     █████████       ███"
-    echo    "      █████████████        ████        ██████████████"
-    echo    "      █████  █████████     ███       ████████       ████"
-    echo    "      ████       █████     ███       █████        ██████"
-    echo    "       ██████       ███    ████████████        ██████"
-    echo    "         ███████      ████████████████████    ██████"
-    echo    "           ███████████████          ███████████"
-    echo    "                ███████                 ██████"
-    echo    "                ████                      ██████"
-    echo    "              █████                          ███"
-    echo    "      █████████████████████  █████████████████████"
-    echo    "      ███████          ███████            ███████████"
-    echo    "         ███           ███████            ███ ████"
-    echo    "         ███           ███ ███            ███ ████"
-    echo    "         ████         ███    ████      ████   ████"
-    echo    "             ███████████████████████████      ████"
-    echo    "                ████████████████████          ████"
-    echo    "             ████████████████████████         ████"
-    echo    "           ████████████████████████████       ████"
-    echo    "         ██████████████████████████████       ████"
-    echo    "       ████████████████████████████████       ████"
-    echo    "      █████████████████████████████████       ████"
-    echo    "       ██████████████████████████████         ████"
-    echo    "             █████████████████████            ████"
-    echo    "                       ██████████             ██████"
-    echo    "                       ██████               ████████"
-    echo    "                        ██████████████████████████"
-    echo -e "                           ████████████████████${NC_}"
+    echo -e "${PINK}                ██████████              ██████████\n\
+            ██████████████████      ████████████████\n\
+          ██████      ██████    ████████      ██████\n\
+          ██████          ████    ████          ██████\n\
+            ██████        ████████████          ████\n\
+            ██████          ████████          ████    ██████████████\n\
+██████████████████          ██████            ████████████████████████\n\
+████████  ████████████        ████          ██████████          ██████\n\
+██████          ██████        ████          ██████            ████████\n\
+  ████████          ████      ████████████████            ████████\n\
+    ██████████        ████████████████████████████      ████████\n\
+        ████████████████████              ████████████████\n\
+              ██████████                      ████████\n\
+              ██████                            ████████\n\
+            ██████                                    ████\n\
+██████████████████████████████  ██████████████████████████████\n\
+██████████              ██████████                ████████████████\n\
+    ████                ██████████                ████  ██████\n\
+    ████                ████  ████                ████  ██████\n\
+    ██████            ████      ██████        ██████    ██████\n\
+          ██████████████████████████████████████        ██████\n\
+              ████████████████████████████              ██████\n\
+          ██████████████████████████████████            ██████\n\
+        ██████████████████████████████████████          ██████\n\
+    ██████████████████████████████████████████          ██████\n\
+  ████████████████████████████████████████████          ██████\n\
+██████████████████████████████████████████████          ██████\n\
+  ██████████████████████████████████████████            ██████\n\
+          ██████████████████████████████                ██████\n\
+                        ██████████████                    ████████\n\
+                        ████████                      ██████████\n\
+                          ████████████████████████████████████\n\
+                              ████████████████████████████${RESET}"
     echo ""
     echo -e "${BOLD}${PINK}  ┌──────────────────────────────────────────────────────────────┐${RESET}"
     echo -e "${BOLD}${PINK}  │                                                              │${RESET}"
@@ -508,33 +509,11 @@ OPML_EOF
         echo -e "${DIM}  （可在主菜单「2 图书馆」中替换为你自己的 feeds.opml）${NC}"
     fi
 
-    # 脚本安置：如果当前不是从 ~/mimi/mimi.sh 运行，则安置脚本到 ~/mimi/mimi.sh
+    # 脚本安置：如果当前不是从 ~/mimi/mimi.sh 运行，则重新下载完整版到那里
     # （bash <(curl ...) 管道运行时 $0 是管道fd，cp会截断，必须用curl重新下载）
-    local SCRIPT_OK=false
-    # 优先：如果当前脚本本身是有效的 bash 脚本（不是管道/404），直接复制过去
-    if [ "$(realpath "$0" 2>/dev/null)" = "$MIMI_SCRIPT" ]; then
-        SCRIPT_OK=true   # 已经在正确位置，不需要操作
-    elif [ -f "$0" ] && head -1 "$0" 2>/dev/null | grep -q "^#!"; then
-        # $0 是真实文件且是脚本，直接复制
-        cp "$0" "$MIMI_SCRIPT" 2>/dev/null && chmod +x "$MIMI_SCRIPT" && SCRIPT_OK=true
-    fi
-
-    # 如果以上方法失败（管道运行），才尝试从网络下载
-    if [ "$SCRIPT_OK" = false ] && [ ! -f "$MIMI_SCRIPT" ]; then
-        local TMP_DL
-        TMP_DL=$(mktemp /tmp/mimi_dl.XXXXXX)
-        if curl -sL --max-time 30 --fail "$MIMI_INSTALL_URL" -o "$TMP_DL" 2>/dev/null \
-            && head -1 "$TMP_DL" 2>/dev/null | grep -q "^#!"; then
-            mv "$TMP_DL" "$MIMI_SCRIPT"
-            chmod +x "$MIMI_SCRIPT"
-            SCRIPT_OK=true
-        else
-            rm -f "$TMP_DL"
-            echo -e "${RED}  ❌ 脚本下载失败（网络问题或 URL 失效）${NC}"
-            echo -e "${YELLOW}  请手动下载后放到：$MIMI_SCRIPT${NC}"
-        fi
-    elif [ -f "$MIMI_SCRIPT" ]; then
-        SCRIPT_OK=true
+    if [ ! -f "$MIMI_SCRIPT" ] || [ "$(realpath "$0" 2>/dev/null)" != "$MIMI_SCRIPT" ]; then
+        curl -sL "$MIMI_INSTALL_URL" -o "$MIMI_SCRIPT" 2>/dev/null
+        chmod +x "$MIMI_SCRIPT"
     fi
 
     local LINK=""
@@ -556,13 +535,11 @@ OPML_EOF
         CURRENT_TARGET=$(readlink "$LINK" 2>/dev/null)
         if [ "$CURRENT_TARGET" != "$MIMI_SCRIPT" ]; then
             ln -sf "$MIMI_SCRIPT" "$LINK" 2>/dev/null
-            if [ -L "$LINK" ] && [ "$(readlink "$LINK")" = "$MIMI_SCRIPT" ]; then
-                # 链接创建/更新成功才提示
+            if [ ! -L "$LINK" ] 2>/dev/null || [ "$(readlink "$LINK")" != "$MIMI_SCRIPT" ]; then
+                # 第一次创建才提示
                 echo -e "${PINK}  ✅ 快捷命令已创建！以后输入 mimi 即可调出本面板。${NC}"
                 [ "$IS_SERV00" = true ] && echo -e "${DIM}  （如不生效，请执行：source ~/.bashrc）${NC}"
                 sleep 1
-            else
-                echo -e "${YELLOW}  ⚠️  快捷命令创建失败，可手动运行：bash $MIMI_SCRIPT${NC}"
             fi
         fi
     fi
@@ -2690,27 +2667,6 @@ except: print('$BOT|未知')
                 echo -e "  ${YELLOW}⚠️  cron 保活：未设置${NC}"
             fi
         fi
-        # 读取新闻推送状态
-        NEWS_ENABLED=$("$PYTHON_BIN" -c "
-import json
-try:
-    d = json.load(open('$BOT_BASE/$BOT/config.json'))
-    print('true' if d.get('ENABLE_NEWS', False) else 'false')
-except: print('false')
-" 2>/dev/null)
-        NEWS_TIME_DISP=$("$PYTHON_BIN" -c "
-import json
-try:
-    d = json.load(open('$BOT_BASE/$BOT/config.json'))
-    print(d.get('NEWS_MORNING','08:30') + ' / ' + d.get('NEWS_EVENING','18:00'))
-except: print('08:30 / 18:00')
-" 2>/dev/null)
-        if [ "$NEWS_ENABLED" = "true" ]; then
-            NEWS_LABEL="${GREEN}✅ 开启中  ${DIM}(${NEWS_TIME_DISP})${NC}"
-        else
-            NEWS_LABEL="${RED}⏸ 已关闭${NC}"
-        fi
-
         echo -e "${PINK2}  ──────────────────────────────────────────────────────${NC}"
         echo ""
         if [ -z "$PID" ]; then
@@ -2720,7 +2676,6 @@ except: print('08:30 / 18:00')
         fi
         echo -e "  ${PINK}r)${NC}  🔄 重启秘书"
         echo -e "  ${PINK}3)${NC}  🎭 重塑灵魂 (修改性格/新闻推送)"
-        echo -e "  ${PINK}p)${NC}  📰 新闻推送  $(echo -e "$NEWS_LABEL")"
         echo -e "  ${PINK}4)${NC}  ⚙️  更换模型 (换模型/API/Tavily)"
         # serv00 额外：cron 保活管理
         if [ "$IS_SERV00" = true ]; then
@@ -2751,64 +2706,6 @@ except: print('08:30 / 18:00')
                 MAP="$BOT"
                 modify_prompt_direct "$BOT"
                 ;;
-            p|P)
-                # 一键切换新闻推送开关
-                CUR_NEWS=$("$PYTHON_BIN" -c "
-import json
-try:
-    d = json.load(open('$BOT_BASE/$BOT/config.json'))
-    print('true' if d.get('ENABLE_NEWS', False) else 'false')
-except: print('false')
-" 2>/dev/null)
-                if [ "$CUR_NEWS" = "true" ]; then
-                    # 当前开启 → 关闭
-                    "$PYTHON_BIN" -c "
-import json, sys
-path = '$BOT_BASE/$BOT/config.json'
-try:
-    with open(path, 'r', encoding='utf-8') as f: data = json.load(f)
-    data['ENABLE_NEWS'] = False
-    with open(path, 'w', encoding='utf-8') as f: json.dump(data, f, indent=4, ensure_ascii=False)
-    print('ok')
-except Exception as e: print('err:', e)
-" 2>/dev/null
-                    echo -e "${YELLOW}  ⏸ 新闻推送已关闭，重启中...${NC}"
-                else
-                    # 当前关闭 → 开启，先询问时间
-                    echo ""
-                    echo -e "${PINK}  ╔══════════════════════════════════════════╗${NC}"
-                    echo -e "${PINK}  ║      📰 开启定时新闻推送                ║${NC}"
-                    echo -e "${PINK}  ╚══════════════════════════════════════════╝${NC}"
-                    echo ""
-                    # 读取当前时间配置作为默认值
-                    CUR_MORNING=$("$PYTHON_BIN" -c "import json; d=json.load(open('$BOT_BASE/$BOT/config.json')); print(d.get('NEWS_MORNING','08:30'))" 2>/dev/null)
-                    CUR_EVENING=$("$PYTHON_BIN" -c "import json; d=json.load(open('$BOT_BASE/$BOT/config.json')); print(d.get('NEWS_EVENING','18:00'))" 2>/dev/null)
-                    echo -e "  ${DIM}早间推送时间（当前：${CUR_MORNING}）${NC}"
-                    read -p "  早间时间（留空保持 ${CUR_MORNING}）: " NEW_MORNING
-                    [ -z "$NEW_MORNING" ] && NEW_MORNING="$CUR_MORNING"
-                    echo -e "  ${DIM}傍晚推送时间（当前：${CUR_EVENING}）${NC}"
-                    read -p "  傍晚时间（留空保持 ${CUR_EVENING}）: " NEW_EVENING
-                    [ -z "$NEW_EVENING" ] && NEW_EVENING="$CUR_EVENING"
-                    "$PYTHON_BIN" -c "
-import json, sys
-path = '$BOT_BASE/$BOT/config.json'
-try:
-    with open(path, 'r', encoding='utf-8') as f: data = json.load(f)
-    data['ENABLE_NEWS']  = True
-    data['NEWS_MORNING'] = '$NEW_MORNING'
-    data['NEWS_EVENING'] = '$NEW_EVENING'
-    with open(path, 'w', encoding='utf-8') as f: json.dump(data, f, indent=4, ensure_ascii=False)
-    print('ok')
-except Exception as e: print('err:', e)
-" 2>/dev/null
-                    echo -e "${GREEN}  ✅ 新闻推送已开启（早间 ${NEW_MORNING} / 傍晚 ${NEW_EVENING}），重启中...${NC}"
-                fi
-                sleep 1
-                _kill_all_bot "$BOT"
-                sleep 1
-                _start_bot "$BOT"
-                echo -e "${GREEN}  🔄 $BOT 已重启！${NC}"
-                sleep 1 ;;
             4)
                 MAP="$BOT"
                 change_brain_direct "$BOT"
