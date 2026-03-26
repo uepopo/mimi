@@ -348,25 +348,30 @@ _ensure_deps
 # ── 创建 ~/mimi/ 总目录，安置脚本，创建快捷命令 ──
 MIMI_INSTALL_URL="https://raw.githubusercontent.com/uepopo/mimi/refs/heads/main/install.sh"
 
-# ── 快捷命令自我修复：检测 /usr/local/bin/mimi 是否损坏 ──────
-# 损坏场景：curl 下载失败把 404 页面写进去，或软链接指向已删除文件
+# ── 快捷命令自我修复：每次运行时检测并修复损坏/过时的快捷入口 ──
+# 修复场景：实体文件副本（旧版）、404页面、软链接指向已删除文件
 _heal_shortcut() {
     local LINK="/usr/local/bin/mimi"
     local LOCAL_LINK="$HOME/.local/bin/mimi"
 
-    _is_valid_script() {
-        local f="$1"
-        [ -f "$f" ] && head -1 "$f" 2>/dev/null | grep -q "^#!"
-    }
-
-    # 检测所有快捷入口
     for _L in "$LINK" "$LOCAL_LINK"; do
         if [ -e "$_L" ] || [ -L "$_L" ]; then
-            # 软链接指向的目标是否是合法脚本？
-            local _TARGET
-            _TARGET=$(readlink -f "$_L" 2>/dev/null)
-            if ! _is_valid_script "$_TARGET"; then
-                # 损坏了，删掉让 _setup_shortcut 重建
+            local _NEEDS_REBUILD=false
+
+            if [ -L "$_L" ]; then
+                # 是软链接：目标必须是 ~/mimi/mimi.sh 且内容合法
+                local _TARGET
+                _TARGET=$(readlink -f "$_L" 2>/dev/null)
+                if [ "$_TARGET" != "$MIMI_SCRIPT" ]                     || ! head -1 "$_TARGET" 2>/dev/null | grep -q "^#!"; then
+                    _NEEDS_REBUILD=true
+                fi
+            else
+                # 是实体文件（旧版把完整脚本复制进来的方式）：
+                # 统一改成指向 ~/mimi/mimi.sh 的软链接
+                _NEEDS_REBUILD=true
+            fi
+
+            if [ "$_NEEDS_REBUILD" = true ]; then
                 rm -f "$_L" 2>/dev/null
             fi
         fi
