@@ -2556,49 +2556,88 @@ except: print('$BOT|未知')
         if [ -z "$PID" ]; then
             echo -e "  ${PINK}s)${NC}  ▶  启动秘书"
         else
-            echo -e "  ${PINK}s)${NC}  ⏹  停止秘书"
-        fi
-        echo -e "  ${PINK}r)${NC}  🔄 重启秘书"
-        echo -e "  ${PINK}3)${NC}  🎭 重塑灵魂 (修改性格/新闻推送)"
-        echo -e "  ${PINK}4)${NC}  ⚙️  更换模型 (换模型/API/Tavily)"
-        echo -e "  ${RED}d)  🔨 辞退并删除此秘书${NC}"
-        echo -e "  ${DIM}0)  返回主菜单${NC}"
-        echo ""
-        read -p "  👉 请选择: " SUB_CHOICE
-        case "$SUB_CHOICE" in
-            s|S)
-                PID=$(_get_bot_pid "$BOT")
-                if [ ! -z "$PID" ]; then
-                    _kill_all_bot "$BOT"
-                    echo -e "${YELLOW}⏹ 已停止 $BOT${NC}"
-                else
-                    _start_bot "$BOT"
-                    echo -e "${GREEN}▶ 已启动 $BOT${NC}"
-                fi
-                sleep 1 ;;
-            r|R)
-                _kill_all_bot "$BOT"
-                sleep 1
-                _start_bot "$BOT"
-                echo -e "${GREEN}🔄 $BOT 已重启！${NC}"
-                sleep 1 ;;
-            3)
-                MAP="$BOT"
-                modify_prompt_direct "$BOT"
-                ;;
-            4)
-                MAP="$BOT"
-                change_brain_direct "$BOT"
-                ;;
-            d|D)
-                _kill_all_bot "$BOT"
-                rm -rf "$BOT_BASE/$BOT"
-                echo -e "${GREEN}✅ '$BOT' 已辞退删除。${NC}"
-                sleep 1
-                return ;;
-            0) return ;;
-            *) echo -e "${RED}⚠️ 无效选择${NC}"; sleep 1 ;;
-        esac
+echo -e "  s)  ⏹  停止秘书"
+                echo -e "  r)  🔄 重启秘书"
+                echo -e "  t)  ☁️  接管Nextcloud (需配置)"
+                echo -e "  3)  🎭 重塑灵魂 (修改性格/新闻推送)"
+                echo -e "  4)  ⚙️  更换模型 (换模型/API/Tavily)"
+                echo -e "  d)  🔨 辞退并删除此秘书"
+                echo -e "  0)  返回主菜单\n"
+
+                read -p "  👉 请选择: " choice
+                case "$choice" in
+                    s|S)
+                        echo -e "\n  ${YELLOW}正在停止秘书 ${bot_name}...${NC}"
+                        sudo systemctl stop "mimi_${bot_name}.service" 2>/dev/null
+                        echo -e "  ${GREEN}✅ 已停止！${NC}"
+                        sleep 2
+                        ;;
+                    r|R)
+                        echo -e "\n  ${YELLOW}正在重启秘书 ${bot_name}...${NC}"
+                        if systemctl is-active --quiet "mimi_${bot_name}.service"; then
+                            sudo systemctl restart "mimi_${bot_name}.service"
+                            echo -e "  ${GREEN}✅ 重启成功！${NC}"
+                        else
+                            echo -e "  ${RED}⚠️ 该秘书的守护进程未运行，尝试直接启动...${NC}"
+                            sudo systemctl start "mimi_${bot_name}.service"
+                            echo -e "  ${GREEN}✅ 启动指令已发送！${NC}"
+                        fi
+                        sleep 2
+                        ;;
+                    t|T)
+                        echo -e "\n${YELLOW}  === ☁️ 配置 Nextcloud 接管 ===${NC}"
+                        echo -e "  ${DIM}MIMI 将作为大管家，为您播报日历、新闻和重要邮件。${NC}"
+                        echo -e "  ${DIM}请确保您已在 NC 安全设置中生成了“应用密码”。${NC}\n"
+                        
+                        read -p "  👉 请输入 Nextcloud 网址 (例如 https://nc.abc.com): " nc_url
+                        read -p "  👉 请输入 NC 登录用户名: " nc_user
+                        read -p "  👉 请输入 NC 应用密码: " nc_pass
+                        
+                        # 去除网址末尾可能多余的斜杠
+                        nc_url=$(echo "$nc_url" | sed 's#/*$##')
+
+                        if [ -n "$nc_url" ] && [ -n "$nc_user" ] && [ -n "$nc_pass" ]; then
+                            # 将配置追加保存到当前机器人的环境变量文件中
+                            echo "NC_URL=\"$nc_url\"" >> "$bot_dir/.env"
+                            echo "NC_USER=\"$nc_user\"" >> "$bot_dir/.env"
+                            echo "NC_PASS=\"$nc_pass\"" >> "$bot_dir/.env"
+                            
+                            echo -e "\n  ${GREEN}✅ Nextcloud 配置已成功保存到该秘书的档案中！${NC}"
+                            echo -e "  ${PINK}MIMI 已经拿到了 Nextcloud 的钥匙。${NC}"
+                            sleep 2
+                        else
+                            echo -e "\n  ${RED}❌ 信息不完整，配置已取消。${NC}"
+                            sleep 2
+                        fi
+                        ;;
+                    3)
+                        _configure_personality "$bot_dir"
+                        ;;
+                    4)
+                        _configure_api "$bot_dir"
+                        ;;
+                    d|D)
+                        echo -e "\n  ${RED}⚠️ 警告：确定要辞退并删除秘书 [${bot_name}] 吗？(y/n)${NC}"
+                        read -p "  👉 请确认: " confirm
+                        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                            sudo systemctl stop "mimi_${bot_name}.service" 2>/dev/null
+                            sudo systemctl disable "mimi_${bot_name}.service" 2>/dev/null
+                            sudo rm -f "/etc/systemd/system/mimi_${bot_name}.service"
+                            sudo systemctl daemon-reload
+                            rm -rf "$bot_dir"
+                            echo -e "  ${GREEN}✅ 秘书已辞退并清理完毕！${NC}"
+                            sleep 2
+                            break
+                        fi
+                        ;;
+                    0)
+                        break
+                        ;;
+                    *)
+                        echo -e "  ${RED}❌ 无效选项，请重新选择${NC}"
+                        sleep 1
+                        ;;
+                esac        esac
     done
 }
 
