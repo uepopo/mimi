@@ -348,6 +348,32 @@ _ensure_deps
 # ── 创建 ~/mimi/ 总目录，安置脚本，创建快捷命令 ──
 MIMI_INSTALL_URL="https://raw.githubusercontent.com/uepopo/mimi/refs/heads/main/install.sh"
 
+# ── 快捷命令自我修复：检测 /usr/local/bin/mimi 是否损坏 ──────
+# 损坏场景：curl 下载失败把 404 页面写进去，或软链接指向已删除文件
+_heal_shortcut() {
+    local LINK="/usr/local/bin/mimi"
+    local LOCAL_LINK="$HOME/.local/bin/mimi"
+
+    _is_valid_script() {
+        local f="$1"
+        [ -f "$f" ] && head -1 "$f" 2>/dev/null | grep -q "^#!"
+    }
+
+    # 检测所有快捷入口
+    for _L in "$LINK" "$LOCAL_LINK"; do
+        if [ -e "$_L" ] || [ -L "$_L" ]; then
+            # 软链接指向的目标是否是合法脚本？
+            local _TARGET
+            _TARGET=$(readlink -f "$_L" 2>/dev/null)
+            if ! _is_valid_script "$_TARGET"; then
+                # 损坏了，删掉让 _setup_shortcut 重建
+                rm -f "$_L" 2>/dev/null
+            fi
+        fi
+    done
+}
+_heal_shortcut
+
 _setup_shortcut() {
     mkdir -p "$MIMI_HOME" "$BOT_BASE" "$MASTER_DIR" "$LIBRARY_DIR"
 
@@ -399,11 +425,37 @@ OPML_EOF
         echo -e "${DIM}  （可在主菜单「2 图书馆」中替换为你自己的 feeds.opml）${NC}"
     fi
 
-    # 脚本安置：如果当前不是从 ~/mimi/mimi.sh 运行，则重新下载完整版到那里
+    # 脚本安置：确保 ~/mimi/mimi.sh 存在且是合法的 bash 脚本
     # （bash <(curl ...) 管道运行时 $0 是管道fd，cp会截断，必须用curl重新下载）
-    if [ ! -f "$MIMI_SCRIPT" ] || [ "$(realpath "$0" 2>/dev/null)" != "$MIMI_SCRIPT" ]; then
-        curl -sL "$MIMI_INSTALL_URL" -o "$MIMI_SCRIPT" 2>/dev/null
-        chmod +x "$MIMI_SCRIPT"
+    local SCRIPT_VALID=false
+    if [ -f "$MIMI_SCRIPT" ] && head -1 "$MIMI_SCRIPT" 2>/dev/null | grep -q "^#!"; then
+        SCRIPT_VALID=true
+    fi
+
+    if [ "$SCRIPT_VALID" = false ]; then
+        # 优先尝试用 curl 下载
+        local TMP_DL="$MIMI_SCRIPT.tmp"
+        if curl -sL --max-time 30 "$MIMI_INSTALL_URL" -o "$TMP_DL" 2>/dev/null \
+            && head -1 "$TMP_DL" 2>/dev/null | grep -q "^#!"; then
+            mv "$TMP_DL" "$MIMI_SCRIPT"
+        else
+            rm -f "$TMP_DL" 2>/dev/null
+            # 下载失败：直接把当前正在运行的脚本复制过去
+            # realpath $0 在管道模式下是 /proc/.../fd/XX，可以直接读取
+            local SELF
+            SELF=$(realpath "$0" 2>/dev/null || echo "$0")
+            if [ -f "$SELF" ] && [ "$SELF" != "$MIMI_SCRIPT" ]; then
+                cp "$SELF" "$MIMI_SCRIPT" 2>/dev/null
+            fi
+            # 再验证一次
+            if [ -f "$MIMI_SCRIPT" ] && head -1 "$MIMI_SCRIPT" 2>/dev/null | grep -q "^#!"; then
+                : # ok
+            else
+                # 最后兜底：把自身内容写过去（当前进程能读自己的 fd）
+                cat "$0" > "$MIMI_SCRIPT" 2>/dev/null || true
+            fi
+        fi
+        chmod +x "$MIMI_SCRIPT" 2>/dev/null
     fi
 
     local LINK="/usr/local/bin/mimi"
