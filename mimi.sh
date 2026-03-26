@@ -2637,7 +2637,8 @@ echo -e "  s)  ⏹  停止秘书"
                         echo -e "  ${RED}❌ 无效选项，请重新选择${NC}"
                         sleep 1
                         ;;
-                esac        esac
+                esac
+        fi
     done
 }
 
