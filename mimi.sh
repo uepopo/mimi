@@ -1854,7 +1854,10 @@ def handle_nc_request(user_text):
 
     # ── 创建文件夹 ────────────────────────────────────────
     if any(w in text for w in ["新建文件夹", "创建文件夹", "建个文件夹", "建目录"]):
-        name_match = re.search(r'(?:叫|名为|命名为|名字是|文件夹[：:]?\s*)[\「"']?([^\s，。！？「"']{1,30})[\」"']?', user_text)
+        name_match = re.search(r'(?:叫|名为|命名为|名字是|文件夹[：:]\s*)(\S{1,30})', user_text)
+        if not name_match:
+            # 尝试取最后一个中文词组
+            name_match = re.search(r'文件夹\s*(\S+)', user_text)
         if not name_match:
             return ("[系统提示：我没能识别出要创建的文件夹名称。]\n"
                     "请问主人：要创建什么名字的文件夹？在根目录还是某个子目录下？")
@@ -3016,10 +3019,7 @@ except: print('$BOT|未知')
                     echo -e "\n  ${RED}⚠️ 警告：确定要辞退并删除秘书 [${bot_name}] 吗？(y/n)${NC}"
                     read -p "  👉 请确认: " confirm
                     if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-                        sudo systemctl stop "mimi_${bot_name}.service" 2>/dev/null
-                        sudo systemctl disable "mimi_${bot_name}.service" 2>/dev/null
-                        sudo rm -f "/etc/systemd/system/mimi_${bot_name}.service"
-                        sudo systemctl daemon-reload
+                        _kill_all_bot "$bot_name"
                         rm -rf "$bot_dir"
                         echo -e "  ${GREEN}✅ 秘书已辞退并清理完毕！${NC}"
                         sleep 2
@@ -3042,19 +3042,20 @@ echo -e "  s)  ⏹  停止秘书"
                 case "$choice" in
                     s|S)
                         echo -e "\n  ${YELLOW}正在停止秘书 ${bot_name}...${NC}"
-                        sudo systemctl stop "mimi_${bot_name}.service" 2>/dev/null
+                        _kill_all_bot "$bot_name"
                         echo -e "  ${GREEN}✅ 已停止！${NC}"
                         sleep 2
                         ;;
                     r|R)
                         echo -e "\n  ${YELLOW}正在重启秘书 ${bot_name}...${NC}"
-                        if systemctl is-active --quiet "mimi_${bot_name}.service"; then
-                            sudo systemctl restart "mimi_${bot_name}.service"
-                            echo -e "  ${GREEN}✅ 重启成功！${NC}"
+                        _start_bot "$bot_name"
+                        sleep 2
+                        NEW_PID=$(_get_bot_pid "$bot_name")
+                        if [ -n "$NEW_PID" ]; then
+                            echo -e "  ${GREEN}✅ 重启成功！(PID:${NEW_PID})${NC}"
                         else
-                            echo -e "  ${RED}⚠️ 该秘书的守护进程未运行，尝试直接启动...${NC}"
-                            sudo systemctl start "mimi_${bot_name}.service"
-                            echo -e "  ${GREEN}✅ 启动指令已发送！${NC}"
+                            echo -e "  ${RED}⚠️ 启动后进程未检测到，请查看日志：${NC}"
+                            echo -e "  ${DIM}cat $BOT_BASE/$bot_name/bot.log${NC}"
                         fi
                         sleep 2
                         ;;
@@ -3101,10 +3102,7 @@ echo -e "  s)  ⏹  停止秘书"
                         echo -e "\n  ${RED}⚠️ 警告：确定要辞退并删除秘书 [${bot_name}] 吗？(y/n)${NC}"
                         read -p "  👉 请确认: " confirm
                         if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-                            sudo systemctl stop "mimi_${bot_name}.service" 2>/dev/null
-                            sudo systemctl disable "mimi_${bot_name}.service" 2>/dev/null
-                            sudo rm -f "/etc/systemd/system/mimi_${bot_name}.service"
-                            sudo systemctl daemon-reload
+                            _kill_all_bot "$bot_name"
                             rm -rf "$bot_dir"
                             echo -e "  ${GREEN}✅ 秘书已辞退并清理完毕！${NC}"
                             sleep 2
