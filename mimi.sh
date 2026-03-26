@@ -346,7 +346,7 @@ _ensure_deps() {
 _ensure_deps
 
 # ── 创建 ~/mimi/ 总目录，安置脚本，创建快捷命令 ──
-MIMI_INSTALL_URL="https://raw.githubusercontent.com/uepopo/mimi/refs/heads/main/install.sh"
+MIMI_INSTALL_URL="https://raw.githubusercontent.com/uepopo/MIMI/refs/heads/main/mimi.sh"
 
 # ── 快捷命令自我修复：每次运行时检测并修复损坏/过时的快捷入口 ──
 # 修复场景：实体文件副本（旧版）、404页面、软链接指向已删除文件
