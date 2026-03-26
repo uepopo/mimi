@@ -116,7 +116,7 @@ print_banner() {
     echo    "                       ██████████             ██████"
     echo    "                       ██████               ████████"
     echo    "                        ██████████████████████████"
-    echo -e "                           ████████████████████${NC_}"
+    echo -e "                           ████████████████████${NC}"
     echo ""
     echo -e "${BOLD}${PINK}  ┌──────────────────────────────────────────────────────────────┐${RESET}"
     echo -e "${BOLD}${PINK}  │                                                              │${RESET}"
@@ -407,20 +407,75 @@ OPML_EOF
     fi
 
     local LINK="/usr/local/bin/mimi"
+    local SHORTCUT_OK=false
 
-    if [ -n "$LINK" ]; then
-        # 无论是否存在，都强制重建软链接到正确路径
-        # 避免旧链接指向管道 /proc/xxx/fd/pipe 导致 mimi 命令失效
-        local CURRENT_TARGET
-        CURRENT_TARGET=$(readlink "$LINK" 2>/dev/null)
-        if [ "$CURRENT_TARGET" != "$MIMI_SCRIPT" ]; then
-            ln -sf "$MIMI_SCRIPT" "$LINK" 2>/dev/null
-            if [ ! -L "$LINK" ] 2>/dev/null || [ "$(readlink "$LINK")" != "$MIMI_SCRIPT" ]; then
-                # 第一次创建才提示
-                echo -e "${PINK}  ✅ 快捷命令已创建！以后输入 mimi 即可调出本面板。${NC}"
-                sleep 1
-            fi
+    # ── 方案一：写入 /usr/local/bin（需要 root，最通用）──────
+    local CURRENT_TARGET
+    CURRENT_TARGET=$(readlink "$LINK" 2>/dev/null)
+    if [ "$CURRENT_TARGET" != "$MIMI_SCRIPT" ]; then
+        # 强制重建，避免旧链接指向管道 fd 导致 mimi 命令失效
+        ln -sf "$MIMI_SCRIPT" "$LINK" 2>/dev/null
+    fi
+    if [ -L "$LINK" ] && [ "$(readlink "$LINK")" = "$MIMI_SCRIPT" ]; then
+        SHORTCUT_OK=true
+        # 确保 /usr/local/bin 在 PATH 里（极少数精简系统可能没加载）
+        if ! echo "$PATH" | grep -q "/usr/local/bin"; then
+            export PATH="/usr/local/bin:$PATH"
         fi
+    fi
+
+    # ── 方案二：没有 root 权限时，写入 ~/.local/bin ──────────
+    if [ "$SHORTCUT_OK" = false ]; then
+        local LOCAL_BIN="$HOME/.local/bin"
+        mkdir -p "$LOCAL_BIN"
+        ln -sf "$MIMI_SCRIPT" "$LOCAL_BIN/mimi" 2>/dev/null
+        if [ -L "$LOCAL_BIN/mimi" ] && [ "$(readlink "$LOCAL_BIN/mimi")" = "$MIMI_SCRIPT" ]; then
+            SHORTCUT_OK=true
+            # 把 ~/.local/bin 加进当前 shell 的 PATH
+            if ! echo "$PATH" | grep -q "$LOCAL_BIN"; then
+                export PATH="$LOCAL_BIN:$PATH"
+            fi
+            # 持久写入 .bashrc / .bash_profile，保证下次登录也有效
+            for RC in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+                if [ -f "$RC" ] && ! grep -q "$LOCAL_BIN" "$RC" 2>/dev/null; then
+                    echo "" >> "$RC"
+                    echo "# MIMI shortcut" >> "$RC"
+                    echo "export PATH=\"$LOCAL_BIN:\$PATH\"" >> "$RC"
+                    break
+                fi
+            done
+        fi
+    fi
+
+    # ── 方案三：都不行，直接写 alias 到 .bashrc ─────────────
+    if [ "$SHORTCUT_OK" = false ]; then
+        local ALIAS_LINE="alias mimi='bash $MIMI_SCRIPT'"
+        for RC in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+            if [ -f "$RC" ]; then
+                # 先删掉旧的 alias mimi 行再追加，防止重复
+                sed -i '/^alias mimi=/d' "$RC" 2>/dev/null
+                echo "$ALIAS_LINE" >> "$RC"
+                SHORTCUT_OK=true
+                # 让当前 shell 立即生效
+                # shellcheck disable=SC1090
+                . "$RC" 2>/dev/null || true
+                break
+            fi
+        done
+    fi
+
+    # ── 提示结果 ────────────────────────────────────────────
+    if [ "$SHORTCUT_OK" = true ]; then
+        # 只在「本次新建」时提示，避免每次启动都刷屏
+        if ! command -v mimi &>/dev/null 2>&1; then
+            echo -e "${PINK}  ✅ 快捷命令已创建！以后输入 mimi 即可调出本面板。${NC}"
+            echo -e "${DIM}  （如果当前 shell 输入 mimi 无效，执行 source ~/.bashrc 或重新登录一次）${NC}"
+            sleep 1
+        fi
+    else
+        echo -e "${YELLOW}  ⚠️  无法自动创建 mimi 快捷命令（权限受限）。${NC}"
+        echo -e "${DIM}  手动解决：echo \"alias mimi='bash $MIMI_SCRIPT'\" >> ~/.bashrc && source ~/.bashrc${NC}"
+        sleep 2
     fi
 }
 _setup_shortcut
@@ -922,9 +977,6 @@ with open('$BOT_BASE/$BOT_DIR/config.json', 'w', encoding='utf-8') as f:
     "$ENABLE_PROACTIVE" "$POKE_MIN" "$POKE_MAX" "$DND_START" "$DND_END" \
     "$TAVILY_KEY" "$ENABLE_NEWS" "$NEWS_MORNING" "$NEWS_EVENING" "$NEWS_TOPICS" \
     "$SCHEDULES_JSON" "$MASTER_DIR" "$LIBRARY_DIR" "$BOTROOM"
-
-    # 生成 bot.py（与原版完全一致，仅路径由变量决定）
-    local BOT_PY_PATH="$BOT_BASE/$BOT_DIR/bot.py"
 
     # 生成 bot.py（三室升级版：主人房作息 + 图书馆 RSS + 管家房备忘）
     local BOT_PY_PATH="$BOT_BASE/$BOT_DIR/bot.py"
@@ -2021,6 +2073,36 @@ PYTHON_EOF
     _start_bot "$BOT_DIR"
 
     echo -e "${GREEN}✅ 部署完毕！助手已启动运行。${NC}"
+
+    # ── 等待 bot 启动，主动发送上线汇报 ──────────────────────
+    echo -e "${DIM}  正在等待助手上线，准备发送启动汇报...${NC}"
+    sleep 5
+    local _GREETING_PROMPT="你刚刚完成了初始化配置，正式上岗了！请用你的性格，给主人发送一条简短的上岗汇报，自我介绍一下，告诉主人你已经就绪、随时待命，让主人感受到一个新秘书到岗的惊喜感。控制在80字以内，不要用'主人'以外的称呼，充满个性。"
+    "$PYTHON_BIN" -c "
+import json, sys, time
+
+try:
+    cfg_path = sys.argv[1]
+    greeting_prompt = sys.argv[2]
+    with open(cfg_path, 'r', encoding='utf-8') as f:
+        cfg = json.load(f)
+    token = cfg['TG_TOKEN']
+    user_id = cfg['USER_ID']
+
+    # 用最简单的 HTTP 请求发送消息（不依赖 telegram 库初始化完成）
+    import urllib.request, urllib.parse, json as _json
+    msg = greeting_prompt
+    url = f'https://api.telegram.org/bot{token}/sendMessage'
+    data = urllib.parse.urlencode({'chat_id': user_id, 'text': msg}).encode()
+    # 先直接发一条「秘书上岗了」的纯文字，不调 AI（避免 AI 库还没加载好）
+    fallback_msg = f'🌸 我上线啦！配置完成，随时待命。有什么需要尽管说！'
+    data2 = urllib.parse.urlencode({'chat_id': user_id, 'text': fallback_msg}).encode()
+    req = urllib.request.Request(url, data=data2, method='POST')
+    urllib.request.urlopen(req, timeout=10)
+    print('  ✅ 启动汇报已发送到 Telegram！')
+except Exception as e:
+    print(f'  ⚠️  启动汇报发送失败（不影响正常使用）：{e}')
+" "$BOT_BASE/$BOT_DIR/config.json" "$_GREETING_PROMPT" 2>/dev/null || true
 }
 
 delete_bot() {
@@ -2428,7 +2510,7 @@ except: print('$BOT|未知')
         echo -e "  ${PINK}r)${NC}  🔄 重启秘书"
         echo -e "  ${PINK}3)${NC}  🎭 重塑灵魂 (修改性格/新闻推送)"
         echo -e "  ${PINK}4)${NC}  ⚙️  更换模型 (换模型/API/Tavily)"
-        echo -e "  ${PINK}2)${NC}  🔨 辞退并删除此秘书"
+        echo -e "  ${RED}d)  🔨 辞退并删除此秘书${NC}"
         echo -e "  ${DIM}0)  返回主菜单${NC}"
         echo ""
         read -p "  👉 请选择: " SUB_CHOICE
@@ -2457,11 +2539,12 @@ except: print('$BOT|未知')
                 MAP="$BOT"
                 change_brain_direct "$BOT"
                 ;;
-            c|C)
-                    rm -rf "$BOT_BASE/$BOT"
-                    echo -e "${GREEN}✅ '$BOT' 已辞退删除。${NC}"
-                    sleep 1
-                    return ;;
+            d|D)
+                _kill_all_bot "$BOT"
+                rm -rf "$BOT_BASE/$BOT"
+                echo -e "${GREEN}✅ '$BOT' 已辞退删除。${NC}"
+                sleep 1
+                return ;;
             0) return ;;
             *) echo -e "${RED}⚠️ 无效选择${NC}"; sleep 1 ;;
         esac
@@ -2889,8 +2972,8 @@ except: print('$BOT|未知')
     echo ""
     echo -e "  ${PINK}n)${NC}  🌸 添加新助手"
     echo -e "  ${PINK}m)${NC}  📦 模型仓库"
-    echo -e "  ${PINK}1)${NC}  🏠 主人房    ${DIM}查看/编辑作息时间表${NC}"
-    echo -e "  ${PINK}2)${NC}  📚 图书馆    ${DIM}管理 RSS 订阅源 (feeds.opml)${NC}"
+    echo -e "  ${PINK}p)${NC}  🏠 主人房    ${DIM}查看/编辑作息时间表${NC}"
+    echo -e "  ${PINK}l)${NC}  📚 图书馆    ${DIM}管理 RSS 订阅源 (feeds.opml)${NC}"
     echo -e "  ${PINK}h)${NC}  📖 新手说明书"
     echo -e "  ${RED}x)  🧹 全盘清理（删除 MIMI 的一切）${NC}"
     echo -e "  ${DIM}q)  退出  （输入 mimi 可再次调出本面板）${NC}"
@@ -2909,8 +2992,8 @@ except: print('$BOT|未知')
         case "$MAIN_CHOICE" in
             n|N) deploy_new_bot ; pause_to_return ;;
             m|M) manage_local_models ;;
-            1)   manage_master_room ;;
-            2)   manage_library_room ;;
+            p|P) manage_master_room ;;
+            l|L) manage_library_room ;;
             h|H)
                 clear
                 echo -e "${PINK}  ╔════════════════════════════════════════════════════════════════╗${NC}"
@@ -2973,6 +3056,11 @@ except: print('$BOT|未知')
                 echo -e "  ${PINK}第一步${NC}  去 @BotFather 创建 Bot，拿到 Token"
                 echo -e "  ${PINK}第二步${NC}  去 @userinfobot 拿到自己的 User ID"
                 echo -e "  ${PINK}第三步${NC}  主菜单按 n 添加助手，选一个白嫖API，填入信息搞定"
+                echo ""
+                echo -e "${YELLOW}  ─── 📋 主菜单快捷键说明 ─────────────────────────────────────────${NC}"
+                echo -e "  ${DIM}n  添加新助手        m  模型仓库（本地Ollama）${NC}"
+                echo -e "  ${DIM}p  主人房（作息表）  l  图书馆（RSS订阅源）${NC}"
+                echo -e "  ${DIM}输入秘书编号[1-N]  进入秘书管理子菜单${NC}"
                 echo ""
                 echo -e "${YELLOW}  ─── ❓ 常见问题 ─────────────────────────────────────────────────${NC}"
                 echo -e "  ${DIM}Q: 助手不回我？${NC}"
